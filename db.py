@@ -13,6 +13,10 @@ Base = declarative_base(cls=BaseTable)
 
 class Paper(Base):
     conference = Column(String)
+    year = Column(Integer)
     title = Column(String)
     authors = Column(String)
     abstract = Column(String)
+
+    def __repr__(self):
+        return f"{self.year}: {self.title}"
