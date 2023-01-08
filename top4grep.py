@@ -14,12 +14,18 @@ Session = sessionmaker(bind=engine)
 
 logger = new_logger("Top4Grep")
 
+CONFERENCES = ["NDSS", "IEEE S&P", "USENIX", "CCS"]
+
 def grep(keywords):
     # TODO: currently we only grep from title, also grep from other fields in the future maybe?
     constraints = [Paper.title.contains(x) for x in keywords]
 
     with Session() as session:
-        return session.query(Paper).filter(*constraints).all()
+        papers = session.query(Paper).filter(*constraints).all()
+
+    # perform customized sorthing
+    papers = sorted(papers, key=lambda paper: paper.year + CONFERENCES.index(paper.conference)/10, reverse=True)
+    return papers
 
 def show_papers(papers):
     for paper in papers:

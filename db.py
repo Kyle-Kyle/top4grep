@@ -19,4 +19,4 @@ class Paper(Base):
     abstract = Column(String)
 
     def __repr__(self):
-        return f"{self.year}: {self.title}"
+        return f"{self.year}: {self.conference:8s} - {self.title}"

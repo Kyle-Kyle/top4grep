@@ -12,11 +12,11 @@ from db import Base, Paper
 logger = new_logger("DB")
 
 KEYWORD = "kernel"
-CONFERENCES = ["USENIX", "IEEE S&P", "NDSS", "CCS"]
+CONFERENCES = ["NDSS", "IEEE S&P", "USENIX", "CCS"]
 NAME_MAP = {
-        "USENIX": "uss",
-        "IEEE S&P": "sp",
         "NDSS": "ndss",
+        "IEEE S&P": "sp",
+        "USENIX": "uss",
         "CCS": "ccs",
         }
 
