@@ -9,3 +9,7 @@
 
 # Screenshot
 ![screenshot](https://raw.githubusercontent.com/Kyle-Kyle/top4grep/master/img/screenshot.png)
+
+# TODO
+- [ ] grep in abstract
+- [ ] fuzzy match
