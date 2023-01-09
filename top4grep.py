@@ -37,11 +37,12 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description='Scripts to query the paper database',
                                      usage="%(prog)s [options] -k <keywords>")
-    parser.add_argument('-k', type=str, help="keywords to grep, separated by ','. For example, 'linux,kernel,exploit'", required=True)
+    parser.add_argument('-k', type=str, help="keywords to grep, separated by ','. For example, 'linux,kernel,exploit'", default='')
     args = parser.parse_args()
 
     keywords = [x.strip() for x in args.k.split(',')]
     logger.info("Grep based on the following keywords: %s", ', '.join(keywords))
+    logger.warning("No keyword is provided. Return all the papers.")
 
     papers = grep(keywords)
     logger.debug(f"Found {len(papers)} papers")
