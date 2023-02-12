@@ -41,8 +41,10 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     keywords = [x.strip() for x in args.k.split(',')]
-    logger.info("Grep based on the following keywords: %s", ', '.join(keywords))
-    logger.warning("No keyword is provided. Return all the papers.")
+    if keywords:
+        logger.info("Grep based on the following keywords: %s", ', '.join(keywords))
+    else:
+        logger.warning("No keyword is provided. Return all the papers.")
 
     papers = grep(keywords)
     logger.debug(f"Found {len(papers)} papers")

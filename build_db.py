@@ -31,6 +31,12 @@ def save_paper(conf, year, title, authors, abstract):
     session.commit()
     session.close()
 
+def paper_exist(conf, year, title, authors, abstract):
+    session = Session()
+    paper = session.query(Paper).filter(Paper.conference==conf, Paper.year==year, Paper.title==title).first()
+    session.close()
+    return paper is not None
+
 def get_papers(name, year):
     cnt = 0
     conf = NAME_MAP[name]
@@ -45,7 +51,9 @@ def get_papers(name, year):
             title = paper_html.find('span', {'class': 'title'}).text
             authors = [x.text for x in paper_html.find_all('span', {'itemprop': 'author'})]
             abstract = ''
-            save_paper(name, year, title, authors, abstract)
+            # insert the entry only if the paper does not exist
+            if not paper_exist(name, year, title, authors, abstract):
+                save_paper(name, year, title, authors, abstract)
             cnt += 1
     except Exception as e:
         logger.warning(f"Failed to obtain papers at {name}-{year}")
