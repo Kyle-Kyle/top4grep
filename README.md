@@ -1,7 +1,13 @@
 # Installation
-`git clone https://github.com/Kyle-Kyle/top4grep`
+```
+git clone https://github.com/Kyle-Kyle/top4grep
+pip3 install -e top4grep
+```
 
-# Setup
+# Usage 
+## Database Initialization
+
+
 `python build_db.py`
 
 # Query
