@@ -1,13 +1,12 @@
 from datetime import datetime
-from abc import abstractmethod
 
 import requests
 import sqlalchemy
 from sqlalchemy.orm import sessionmaker
 from bs4 import BeautifulSoup
 
-from utils import new_logger
-from db import Base, Paper
+from .utils import new_logger
+from .db import Base, Paper
 
 logger = new_logger("DB")
 
@@ -61,7 +60,7 @@ def get_papers(name, year):
     logger.debug(f"Found {cnt} papers at {name}-{year}...")
 
 
-if __name__ == "__main__":
+def build_db():
     for conf in CONFERENCES:
         for year in range(2000, datetime.now().year+1):
             get_papers(conf, year)

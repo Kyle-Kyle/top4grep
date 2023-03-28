@@ -1,6 +1,4 @@
-from sqlalchemy import Column, String, Integer, Boolean, ForeignKey, Table, Enum
-from sqlalchemy.orm import relation, relationship
-from sqlalchemy.types import LargeBinary
+from sqlalchemy import Column, String, Integer
 from sqlalchemy.ext.declarative import declarative_base, declared_attr
 
 class BaseTable:
