@@ -5,7 +5,7 @@ A grep tool for the top 4 security conferences
 ```
 git clone https://github.com/Kyle-Kyle/top4grep
 cd top4grep
-pip3 install -e ./top4grep
+pip3 install -e .
 ```
 
 ## Usage 
