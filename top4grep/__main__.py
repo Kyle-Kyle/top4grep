@@ -40,7 +40,7 @@ def main():
     parser = argparse.ArgumentParser(description='Scripts to query the paper database',
                                      usage="%(prog)s [options] -k <keywords>")
     parser.add_argument('-k', type=str, help="keywords to grep, separated by ','. For example, 'linux,kernel,exploit'", default='')
-    parser.add_argument('---build-db', action="store_true", help="Builds the database of conference papers")
+    parser.add_argument('--build-db', action="store_true", help="Builds the database of conference papers")
     args = parser.parse_args()
 
     if args.k:
