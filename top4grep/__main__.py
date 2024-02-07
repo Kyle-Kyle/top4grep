@@ -2,8 +2,10 @@ import os
 
 import sqlalchemy
 from sqlalchemy.orm import sessionmaker
-from nltk.data import find
 from nltk import download, word_tokenize
+from nltk.data import find
+from nltk.stem import PorterStemmer
+
 from .db import Base, Paper
 from .build_db import build_db
 from .utils import new_logger
@@ -16,6 +18,7 @@ Base.metadata.create_all(engine)
 Session = sessionmaker(bind=engine)
 
 logger = new_logger("Top4Grep")
+stemmer = PorterStemmer()
 
 CONFERENCES = ["NDSS", "IEEE S&P", "USENIX", "CCS"]
 
@@ -32,9 +35,11 @@ def check_and_download_punkt():
         print("'punkt' tokenizer models not found. Downloading...")
         # Download 'punkt' tokenizer models
         download('punkt')
-
-
-
+        
+# trim word tokens from tokenizer to stem i.e. exploiting to exploit
+def fuzzy_match(title):
+    tokens = word_tokenize(title)
+    return [stemmer.stem(token) for token in tokens]
 
 def grep(keywords):
     # TODO: currently we only grep from title, also grep from other fields in the future maybe?
@@ -46,7 +51,7 @@ def grep(keywords):
     #tokenize the title and filter out the substring matches
     filter_paper = []
     for paper in papers:
-        if all([x.lower() in word_tokenize(paper.title.lower()) for x in keywords]):
+        if all([stemmer.stem(x.lower()) in fuzzy_match(paper.title.lower()) for x in keywords]):
             filter_paper.append(paper)
             
     # perform customized sorthing
