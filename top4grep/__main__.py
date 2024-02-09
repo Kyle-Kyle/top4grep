@@ -2,6 +2,9 @@ import os
 
 import sqlalchemy
 from sqlalchemy.orm import sessionmaker
+from nltk import download, word_tokenize
+from nltk.data import find
+from nltk.stem import PorterStemmer
 
 from .db import Base, Paper
 from .build_db import build_db
@@ -15,19 +18,44 @@ Base.metadata.create_all(engine)
 Session = sessionmaker(bind=engine)
 
 logger = new_logger("Top4Grep")
+stemmer = PorterStemmer()
 
 CONFERENCES = ["NDSS", "IEEE S&P", "USENIX", "CCS"]
 
 
+
+
+# Function to check and download 'punkt' if not already available
+def check_and_download_punkt():
+    try:
+        # Check if 'punkt' is available, this will raise a LookupError if not found
+        find('tokenizers/punkt')
+        #print("'punkt' tokenizer models are already installed.")
+    except LookupError:
+        print("'punkt' tokenizer models not found. Downloading...")
+        # Download 'punkt' tokenizer models
+        download('punkt')
+        
+# trim word tokens from tokenizer to stem i.e. exploiting to exploit
+def fuzzy_match(title):
+    tokens = word_tokenize(title)
+    return [stemmer.stem(token) for token in tokens]
+
 def grep(keywords):
     # TODO: currently we only grep from title, also grep from other fields in the future maybe?
     constraints = [Paper.title.contains(x) for x in keywords]
-
     with Session() as session:
         papers = session.query(Paper).filter(*constraints).all()
-
+    #check whether whether nltk tokenizer data is downloaded
+    check_and_download_punkt()
+    #tokenize the title and filter out the substring matches
+    filter_paper = []
+    for paper in papers:
+        if all([stemmer.stem(x.lower()) in fuzzy_match(paper.title.lower()) for x in keywords]):
+            filter_paper.append(paper)
+            
     # perform customized sorthing
-    papers = sorted(papers, key=lambda paper: paper.year + CONFERENCES.index(paper.conference)/10, reverse=True)
+    papers = sorted(filter_paper, key=lambda paper: paper.year + CONFERENCES.index(paper.conference)/10, reverse=True)
     return papers
 
 
