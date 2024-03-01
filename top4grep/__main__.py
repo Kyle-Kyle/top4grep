@@ -38,22 +38,27 @@ def fuzzy_match(title):
     tokens = word_tokenize(title)
     return [stemmer.stem(token) for token in tokens]
 
+def existed_in_tokens(tokens, keywords):
+    return all(map(lambda k: stemmer.stem(k.lower()) in tokens, keywords))
+
 def grep(keywords, abstract):
     # TODO: currently we only grep either from title or from abstract, also grep from other fields in the future maybe?
     if abstract:
         constraints = [Paper.abstract.contains(x) for x in keywords]
+        with Session() as session:
+            papers = session.query(Paper).filter(*constraints).all()
+        filter_paper = filter(lambda p: existed_in_tokens(fuzzy_match(p.abstract.lower()), keywords), papers)
     else:
         constraints = [Paper.title.contains(x) for x in keywords]
-    with Session() as session:
-        papers = session.query(Paper).filter(*constraints).all()
-    #check whether whether nltk tokenizer data is downloaded
-    check_and_download_punkt()
-    #tokenize the title and filter out the substring matches
-    filter_paper = []
-    for paper in papers:
-        if all([stemmer.stem(x.lower()) in fuzzy_match(paper.title.lower()) for x in keywords]):
-            filter_paper.append(paper)
-            
+        with Session() as session:
+            papers = session.query(Paper).filter(*constraints).all()
+        #check whether whether nltk tokenizer data is downloaded
+        check_and_download_punkt()
+        #tokenize the title and filter out the substring matches
+        filter_paper = []
+        for paper in papers:
+            if all([stemmer.stem(x.lower()) in fuzzy_match(paper.title.lower()) for x in keywords]):
+                filter_paper.append(paper)
     # perform customized sorthing
     papers = sorted(filter_paper, key=lambda paper: paper.year + CONFERENCES.index(paper.conference)/10, reverse=True)
     return papers
@@ -73,8 +78,6 @@ def main():
     args = parser.parse_args()
 
     if args.k:
-        if args.abstract:
-            logger.info("Abstract query is not implemented and we are only grepping title now.")
         assert os.path.exists(DB_PATH), f"need to build a paper database first to perform wanted queries"
         keywords = [x.strip() for x in args.k.split(',')]
         if keywords:
