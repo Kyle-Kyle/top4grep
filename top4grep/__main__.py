@@ -22,9 +22,6 @@ stemmer = PorterStemmer()
 
 CONFERENCES = ["NDSS", "IEEE S&P", "USENIX", "CCS"]
 
-
-
-
 # Function to check and download 'punkt' if not already available
 def check_and_download_punkt():
     try:
@@ -41,19 +38,27 @@ def fuzzy_match(title):
     tokens = word_tokenize(title)
     return [stemmer.stem(token) for token in tokens]
 
-def grep(keywords):
-    # TODO: currently we only grep from title, also grep from other fields in the future maybe?
-    constraints = [Paper.title.contains(x) for x in keywords]
-    with Session() as session:
-        papers = session.query(Paper).filter(*constraints).all()
-    #check whether whether nltk tokenizer data is downloaded
-    check_and_download_punkt()
-    #tokenize the title and filter out the substring matches
-    filter_paper = []
-    for paper in papers:
-        if all([stemmer.stem(x.lower()) in fuzzy_match(paper.title.lower()) for x in keywords]):
-            filter_paper.append(paper)
-            
+def existed_in_tokens(tokens, keywords):
+    return all(map(lambda k: stemmer.stem(k.lower()) in tokens, keywords))
+
+def grep(keywords, abstract):
+    # TODO: currently we only grep either from title or from abstract, also grep from other fields in the future maybe?
+    if abstract:
+        constraints = [Paper.abstract.contains(x) for x in keywords]
+        with Session() as session:
+            papers = session.query(Paper).filter(*constraints).all()
+        filter_paper = filter(lambda p: existed_in_tokens(fuzzy_match(p.abstract.lower()), keywords), papers)
+    else:
+        constraints = [Paper.title.contains(x) for x in keywords]
+        with Session() as session:
+            papers = session.query(Paper).filter(*constraints).all()
+        #check whether whether nltk tokenizer data is downloaded
+        check_and_download_punkt()
+        #tokenize the title and filter out the substring matches
+        filter_paper = []
+        for paper in papers:
+            if all([stemmer.stem(x.lower()) in fuzzy_match(paper.title.lower()) for x in keywords]):
+                filter_paper.append(paper)
     # perform customized sorthing
     papers = sorted(filter_paper, key=lambda paper: paper.year + CONFERENCES.index(paper.conference)/10, reverse=True)
     return papers
@@ -69,6 +74,7 @@ def main():
                                      usage="%(prog)s [options] -k <keywords>")
     parser.add_argument('-k', type=str, help="keywords to grep, separated by ','. For example, 'linux,kernel,exploit'", default='')
     parser.add_argument('--build-db', action="store_true", help="Builds the database of conference papers")
+    parser.add_argument('--abstract', action="store_true", help="Involve abstract into the database's building or query (Need Chrome for building)")
     args = parser.parse_args()
 
     if args.k:
@@ -79,13 +85,13 @@ def main():
         else:
             logger.warning("No keyword is provided. Return all the papers.")
 
-        papers = grep(keywords)
+        papers = grep(keywords, args.abstract)
         logger.debug(f"Found {len(papers)} papers")
 
         show_papers(papers)
     elif args.build_db:
         print("Building db...")
-        build_db()
+        build_db(args.abstract)
 
 
 if __name__ == "__main__":
