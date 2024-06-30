@@ -1,4 +1,4 @@
-import os
+from pathlib import Path
 
 import sqlalchemy
 from sqlalchemy.orm import sessionmaker
@@ -11,9 +11,10 @@ from .build_db import build_db
 from .utils import new_logger
 import argparse
 
-DB_PATH = "papers.db"
+PACKAGE_DIR = Path(__file__).resolve().parent
+DB_PATH = PACKAGE_DIR / "papers.db"
 
-engine = sqlalchemy.create_engine(f'sqlite:///{DB_PATH}')
+engine = sqlalchemy.create_engine(f'sqlite:///{str(DB_PATH)}')
 Base.metadata.create_all(engine)
 Session = sessionmaker(bind=engine)
 
@@ -78,7 +79,7 @@ def main():
     args = parser.parse_args()
 
     if args.k:
-        assert os.path.exists(DB_PATH), f"need to build a paper database first to perform wanted queries"
+        assert DB_PATH.exists(), f"need to build a paper database first to perform wanted queries"
         keywords = [x.strip() for x in args.k.split(',')]
         if keywords:
             logger.info("Grep based on the following keywords: %s", ', '.join(keywords))
