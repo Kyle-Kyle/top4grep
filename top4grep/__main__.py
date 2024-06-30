@@ -12,7 +12,7 @@ from .utils import new_logger
 import argparse
 
 PACKAGE_DIR = Path(__file__).resolve().parent
-DB_PATH = PACKAGE_DIR / "papers.db"
+DB_PATH = PACKAGE_DIR / "data" / "papers.db"
 
 engine = sqlalchemy.create_engine(f'sqlite:///{str(DB_PATH)}')
 Base.metadata.create_all(engine)
