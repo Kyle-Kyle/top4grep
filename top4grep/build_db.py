@@ -1,4 +1,5 @@
 from datetime import datetime
+from pathlib import Path
 
 import requests
 import sqlalchemy
@@ -19,8 +20,10 @@ NAME_MAP = {
         "USENIX": "uss",
         "CCS": "ccs",
         }
+PACKAGE_DIR = Path(__file__).resolve().parent
+DB_PATH = PACKAGE_DIR / "data" / "papers.db"
 
-engine = sqlalchemy.create_engine(f'sqlite:///papers.db')
+engine = sqlalchemy.create_engine(f'sqlite:///{str(DB_PATH)}')
 Base.metadata.create_all(engine)
 Session = sessionmaker(bind=engine)
 

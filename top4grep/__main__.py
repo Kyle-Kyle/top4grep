@@ -1,4 +1,3 @@
-from pathlib import Path
 
 import sqlalchemy
 from sqlalchemy.orm import sessionmaker
@@ -7,12 +6,11 @@ from nltk.data import find
 from nltk.stem import PorterStemmer
 
 from .db import Base, Paper
-from .build_db import build_db
+from .build_db import build_db, DB_PATH
 from .utils import new_logger
 import argparse
 
-PACKAGE_DIR = Path(__file__).resolve().parent
-DB_PATH = PACKAGE_DIR / "data" / "papers.db"
+
 
 engine = sqlalchemy.create_engine(f'sqlite:///{str(DB_PATH)}')
 Base.metadata.create_all(engine)
