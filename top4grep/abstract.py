@@ -136,8 +136,16 @@ class AbstractUSENIX(BasePaperAbstract):
 
         html = BeautifulSoup(r.text, 'html.parser')
 
-        abstract_paragraphs = html.find(string=re.compile("Abstract:")).find_next(recursive=False)
-        return abstract_paragraphs.get_text(separator='\n')
+        abstract_div = html.find('div', {'class': 'field-name-field-paper-description'})
+        if abstract_div:
+            return abstract_div.get_text(strip=True)
+
+        # Fallback for older page layouts
+        abstract_marker = html.find(string=re.compile("Abstract:"))
+        if abstract_marker:
+            return abstract_marker.find_next(recursive=False).get_text(separator='\n')
+
+        return ""
 
 
 class AbstractCCS(BasePaperAbstract):
