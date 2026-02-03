@@ -1,3 +1,4 @@
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -41,6 +42,17 @@ def paper_exist(conf, year, title, authors, abstract):
     session.close()
     return paper is not None
 
+def fetch_with_retry(url, retries=5, base_delay=1):
+    """Fetch URL with retry on 429 (rate limiting) using exponential backoff."""
+    for attempt in range(retries):
+        r = requests.get(url, timeout=30)
+        if r.status_code != 429:
+            return r
+        delay = base_delay * (2 ** attempt)
+        logger.debug(f"Rate limited by {url}, retrying in {delay}s...")
+        time.sleep(delay)
+    return r
+
 def get_papers(name, year, build_abstract):
     cnt = 0
     conf = NAME_MAP[name]
@@ -51,8 +63,12 @@ def get_papers(name, year, build_abstract):
     else:
         extract_abstract = build_abstract
     try:
-        r = requests.get(f"https://dblp.org/db/conf/{conf}/{conf}{year}.html")
-        assert r.status_code == 200
+        r = fetch_with_retry(f"https://dblp.org/db/conf/{conf}/{conf}{year}.html")
+        if r.status_code == 429:
+            logger.warning(f"Rate limited when fetching {name}-{year}, skipping.")
+            return
+        if r.status_code != 200:
+            return
 
         html = BeautifulSoup(r.text, 'html.parser')
         paper_htmls = html.find_all("li", {'class': "inproceedings"})
@@ -68,7 +84,7 @@ def get_papers(name, year, build_abstract):
                 save_paper(name, year, title, authors, abstract)
             cnt += 1
     except Exception as e:
-        logger.warning(f"Failed to obtain papers at {name}-{year}")
+        logger.warning(f"Failed to obtain papers at {name}-{year}: {e}")
 
     logger.debug(f"Found {cnt} papers at {name}-{year}...")
 
