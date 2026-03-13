@@ -1,7 +1,9 @@
+import html
 import os
-import uuid
 import logging
+import re
 import tempfile
+import uuid
 from contextlib import contextmanager
 
 import colorlog
@@ -10,6 +12,17 @@ import colorlog
 logger_formatter = colorlog.ColoredFormatter(
     '[%(name)s][%(levelname)s]%(asctime)s %(log_color)s%(message)s',
     datefmt='%m-%d %H:%M')
+WHITESPACE_RE = re.compile(r"\s+")
+
+
+def normalize_text(value):
+    if value is None:
+        return ""
+    return WHITESPACE_RE.sub(" ", html.unescape(str(value))).strip()
+
+
+def normalize_title(value):
+    return normalize_text(value)
 
 def new_logger(name, level='DEBUG', new=True):
     # add custom level "VERBOSE"

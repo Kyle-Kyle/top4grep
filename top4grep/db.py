@@ -1,5 +1,5 @@
-from sqlalchemy import Column, String, Integer
-from sqlalchemy.ext.declarative import declarative_base, declared_attr
+from sqlalchemy import Column, Integer, String
+from sqlalchemy.orm import declarative_base, declared_attr
 
 class BaseTable:
     @declared_attr
