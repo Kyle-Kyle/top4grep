@@ -5,12 +5,7 @@ import re
 import requests
 from abc import ABC, abstractmethod
 from bs4 import BeautifulSoup
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException
-from urllib.parse import urlparse, urlunparse
+from urllib.parse import urlparse
 
 from .utils import new_logger
 
@@ -61,72 +56,98 @@ class AbstractNDSS(BasePaperAbstract):
 
 
 class AbstractSP(BasePaperAbstract):
-    def has_abstract_sibling(self, tag):
-        return any(sibling for sibling in tag.find_all_next() if sibling.get_text(strip=True) == 'Abstract')
-   
-    def update_url(self, url):
+    GRAPHQL_URL = "https://www.computer.org/csdl/api/v1/graphql"
+    ARTICLE_FIELDS = """
+        id
+        abstract
+        normalizedAbstract
+        abstracts {
+            abstractType
+            content
+        }
+    """
+
+    def _query_graphql(self, query, variables):
+        response = requests.post(
+            self.GRAPHQL_URL,
+            json={"query": query, "variables": variables},
+            headers={"origin": "https://www.computer.org"},
+        )
+        response.raise_for_status()
+
+        payload = response.json()
+        if payload.get("errors"):
+            raise RuntimeError(payload["errors"])
+        return payload.get("data", {})
+
+    def _get_article_by_doi(self, doi):
+        query = f"""
+            query ($doi: String!) {{
+                article: articleByDoi(doi: $doi) {{
+                    {self.ARTICLE_FIELDS}
+                }}
+            }}
+        """
+        return self._query_graphql(query, {"doi": doi}).get("article")
+
+    def _get_article_by_id(self, article_id):
+        query = f"""
+            query ($articleId: String!) {{
+                article: articleById(articleId: $articleId) {{
+                    {self.ARTICLE_FIELDS}
+                }}
+            }}
+        """
+        return self._query_graphql(query, {"articleId": article_id}).get("article")
+
+    def _doi_from_url(self, url):
+        match = re.search(r"10\.1109/[^/?#]+", url)
+        if match:
+            return match.group(0)
+        return None
+
+    def _article_id_from_url(self, url):
         parsed_url = urlparse(url)
-        ieee_netloc = 'doi.ieeecomputersociety.org'
-        doi_netlog = 'doi.org'
-        if parsed_url.netloc != ieee_netloc and parsed_url.netloc != 'doi.org':
-            modified_url = urlunparse((parsed_url.scheme, ieee_netloc, parsed_url.path,
-                            parsed_url.params, parsed_url.query, parsed_url.fragment))
-            return modified_url
-        else:
-            return url
+        path_parts = [part for part in parsed_url.path.split("/") if part]
+        if "proceedings-article" not in path_parts:
+            return None
+        return path_parts[-1] if path_parts else None
 
-    def _get_abstract_from_computerorg(self, url):
-        # TODO: handle the case when Chrome is not available
-        driver = webdriver.Chrome()
-        url = self.update_url(url)
-        driver.get(url)
+    def _clean_abstract(self, abstract):
+        return BeautifulSoup(abstract, "html.parser").get_text(separator=" ", strip=True)
 
+    def _extract_abstract(self, article):
+        candidates = [article.get("normalizedAbstract"), article.get("abstract")]
+        abstracts = article.get("abstracts") or []
+        candidates.extend(
+            abstract.get("content")
+            for abstract in abstracts
+            if (abstract.get("abstractType") or "").lower() == "regular"
+        )
+        candidates.extend(abstract.get("content") for abstract in abstracts)
 
-        # Wait for the dynamic element to be present on the page
-        element = WebDriverWait(driver, 3).until(EC.presence_of_element_located((By.TAG_NAME, 'article')))
-        # TODO: I'm not sure if this can handle abstracts with multiple paragraphs
-        abstract = element.find_element(By.CLASS_NAME, 'article-content').text
-        driver.quit()
-        return abstract
-    
-    def _get_abstract_from_ieeexplore(self, url):
-        # TODO: handle the case when Chrome is not available
-        driver = webdriver.Chrome()
-        url = self.update_url(url)
-        logger.debug("URL: %s", url)
-        driver.get(url)
+        for candidate in candidates:
+            if candidate:
+                return self._clean_abstract(candidate)
+        return ""
 
-        # Wait for the dynamic element to be present on the page
-        element = WebDriverWait(driver, 2).until(EC.presence_of_element_located((By.CLASS_NAME, 'abstract-text')))
-        temp = element.find_elements(By.CLASS_NAME, 'abstract-text-view-all')
-        if len(temp) > 0:
-            # If there's a view all button
-            view_all = temp[0]
-            driver.execute_script("arguments[0].scrollIntoView(true);", view_all)
-            view_all.click()
-            text = driver.find_element(By.CLASS_NAME, 'abstract-text').text
-        else:
-            text = element.text
-        
-        if text.find('Abstract:\n') >= 0:
-            text = text[text.find('Abstract:\n') + len('Abstract:\n'):]
-        if text.find('\n(Show Less)') >= 0:
-            text = text[:text.find('\n(Show Less)')]
-        
-        driver.close()
-        return text
-    
     def get_abstract_from_publisher(self, url, _):
-        # TODO: this is super slow. Maybe not Selenium?
-        parsed_url = urlparse(url)
-        ieee_netloc = 'doi.ieeecomputersociety.org'
-        doi_netlog = 'doi.org'
-        if parsed_url.netloc == ieee_netloc:  
-            return self._get_abstract_from_computerorg(url)
-        elif parsed_url.netloc == doi_netlog:
-            return self._get_abstract_from_ieeexplore(url)
-        else:
-            raise NotImplementedError
+        logger.debug("URL: %s", url)
+
+        article = None
+        article_id = self._article_id_from_url(url)
+        if article_id:
+            article = self._get_article_by_id(article_id)
+
+        doi = self._doi_from_url(url)
+        if not article and doi:
+            article = self._get_article_by_doi(doi)
+
+        if not article:
+            logger.warning("Failed to resolve IEEE S&P article from %s", url)
+            return ""
+
+        return self._extract_abstract(article)
 
 
 class AbstractUSENIX(BasePaperAbstract):
@@ -166,9 +187,7 @@ Abstracts = {'NDSS': NDSS,
 
 if __name__ == '__main__':
     logger.setLevel("DEBUG")
-    # SP.get_abstract_from_publisher('https://doi.ieeecomputersociety.org/10.1109/SP46215.2023.00131', [])
-    # SP.get_abstract_from_publisher('https://doi.org/10.1109/SP46215.2023.10179411', [])
-    # print(SP.get_abstract_from_publisher('https://doi.org/10.1109/SP46215.2023.10179381', []))
+    print(SP.get_abstract_from_publisher('https://doi.org/10.1109/SP46215.2023.10179381', []))
     # print(USENIX.get_abstract_from_publisher('https://www.usenix.org/conference/usenixsecurity20/presentation/cremers', []))
     # print(CCS.get_abstract_from_publisher('https://doi.org/10.1145/3576915.3616615', []))
-    print(NDSS.get_abstract_from_publisher('https://www.ndss-symposium.org/ndss2015/i-do-not-know-what-you-visited-last-summer-protecting-users-third-party-web-tracking', []))
+    # print(NDSS.get_abstract_from_publisher('https://www.ndss-symposium.org/ndss2015/i-do-not-know-what-you-visited-last-summer-protecting-users-third-party-web-tracking', []))
