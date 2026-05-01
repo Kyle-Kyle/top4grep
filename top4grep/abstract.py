@@ -14,24 +14,25 @@ from urllib.parse import urlparse, urlunparse
 
 from .utils import new_logger
 
-logger = new_logger('PaperAbstract')
-logger.setLevel('WARNING')
+logger = new_logger("PaperAbstract")
+logger.setLevel("WARNING")
 
 class BasePaperAbstract(ABC):
     def get_abstract(self, paper_html, title, authors):
         # import ipdb; ipdb.set_trace()
-        # logger.debug(f"abstracting {paper_html}, title: {title}")
         try:
             publisher_url = self.get_publisher_url(paper_html)
         except Exception as e:
-            logger.debug(f"Failed to obtain publisher URL. Paper: {title}")
+            logger.warning("Failed to obtain publisher URL for paper %r: %s", title, e)
             return ""
         else:
             try:
                 return self.get_abstract_from_publisher(publisher_url, authors)
+            except requests.RequestException as e:
+                logger.warning("Failed to fetch abstract for paper %r from %s: %s", title, publisher_url, e)
             except Exception as e:
-                logger.debug(f"Failed to extract abstract from publisher URL {publisher_url}.")
-                return ""
+                logger.exception("Failed to extract abstract for paper %r from %s: %s", title, publisher_url, e)
+            return ""
 
     def get_publisher_url(self, paper_html):
         ee = paper_html.find('li', {'class': 'ee'})
@@ -44,7 +45,7 @@ class BasePaperAbstract(ABC):
 
 class AbstractNDSS(BasePaperAbstract):
     def get_abstract_from_publisher(self, url, authors):
-        logger.debug(f'URL: {url}')
+        logger.debug("URL: %s", url)
         r = requests.get(url)
         assert r.status_code == 200
 
@@ -92,7 +93,7 @@ class AbstractSP(BasePaperAbstract):
         # TODO: handle the case when Chrome is not available
         driver = webdriver.Chrome()
         url = self.update_url(url)
-        logger.debug(f'URL: {url}')
+        logger.debug("URL: %s", url)
         driver.get(url)
 
         # Wait for the dynamic element to be present on the page
@@ -131,7 +132,7 @@ class AbstractSP(BasePaperAbstract):
 class AbstractUSENIX(BasePaperAbstract):
     def get_abstract_from_publisher(self, url, authors):
         r = requests.get(url)
-        logger.debug(f'URL: {url}')
+        logger.debug("URL: %s", url)
         assert r.status_code == 200
 
         html = BeautifulSoup(r.text, 'html.parser')
@@ -143,7 +144,7 @@ class AbstractUSENIX(BasePaperAbstract):
 class AbstractCCS(BasePaperAbstract):
     def get_abstract_from_publisher(self, url, authors):
         # TODO: ACM library doesn't like me to crawl and will ban me when upset.
-        logger.debug(f'URL: {url}')
+        logger.debug("URL: %s", url)
         r = requests.get(url)
         assert r.status_code == 200
 
@@ -164,7 +165,7 @@ Abstracts = {'NDSS': NDSS,
              'CCS': CCS}
 
 if __name__ == '__main__':
-    logger.setLevel('DEBUG')
+    logger.setLevel("DEBUG")
     # SP.get_abstract_from_publisher('https://doi.ieeecomputersociety.org/10.1109/SP46215.2023.00131', [])
     # SP.get_abstract_from_publisher('https://doi.org/10.1109/SP46215.2023.10179411', [])
     # print(SP.get_abstract_from_publisher('https://doi.org/10.1109/SP46215.2023.10179381', []))

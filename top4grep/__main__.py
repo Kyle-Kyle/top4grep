@@ -28,7 +28,7 @@ def check_and_download_punkt():
         find('tokenizers/punkt')
         #print("'punkt' tokenizer models are already installed.")
     except LookupError:
-        print("'punkt' tokenizer models not found. Downloading...")
+        logger.info("'punkt' tokenizer models not found. Downloading...")
         # Download 'punkt' tokenizer models
         download('punkt')
         
@@ -85,11 +85,11 @@ def main():
             logger.warning("No keyword is provided. Return all the papers.")
 
         papers = grep(keywords, args.abstract)
-        logger.debug(f"Found {len(papers)} papers")
+        logger.debug("Found %d papers", len(papers))
 
         show_papers(papers)
     elif args.build_db:
-        print("Building db...")
+        logger.info("Building db...")
         build_db(args.abstract)
 
 
