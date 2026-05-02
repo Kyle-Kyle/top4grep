@@ -1,5 +1,6 @@
-import gzip
 import os
+import time
+import gzip
 from dataclasses import dataclass
 from datetime import datetime
 from email.utils import parsedate_to_datetime
@@ -16,6 +17,7 @@ from xml.sax.handler import feature_external_ges
 import requests
 import sqlalchemy
 from sqlalchemy.orm import sessionmaker
+from bs4 import BeautifulSoup
 from pypdl import Pypdl
 
 from .utils import new_logger
@@ -240,10 +242,59 @@ def build_fresh_db():
     os.unlink(DBLP_DTD_PATH)
     os.unlink(DBLP_XML_PATH)
 
+def safe_dblp_query(url):
+    for i in range(20):
+        delay = 30
+        try:
+            r = requests.get(url)
+        except requests.exceptions.ConnectionError:
+            logger.warning("being rate limited by dblp, sleeping for %d seconds", delay)
+            time.sleep(delay)
+            continue
+
+        if r.status_code in [200, 404]:
+            return r
+        if r.status_code == 429:
+            logger.warning("hit dblp rate limit, sleeping for %d seconds before retrying %s", delay, url)
+            time.sleep(delay)
+
+def get_papers(name, year):
+    cnt = 0
+    conf = NAME_MAP[name]
+
+    url = f"https://dblp.org/db/conf/{conf}/{conf}{year}.html"
+    try:
+        r = safe_dblp_query(url)
+
+        html = BeautifulSoup(r.text, 'html.parser')
+        paper_htmls = html.find_all("li", {'class': "inproceedings"})
+        for paper_html in paper_htmls:
+            title = paper_html.find('span', {'class': 'title'}).text
+            authors = [x.text for x in paper_html.find_all('span', {'itemprop': 'author'})]
+            # insert the entry only if the paper does not exist
+            if not paper_exist(name, year, title):
+                save_paper(name, year, title, authors, "")
+            cnt += 1
+    except requests.RequestException as e:
+        logger.warning("Failed to fetch papers for %s-%s from %s: %s", name, year, url, e)
+    except (AttributeError, KeyError, TypeError) as e:
+        logger.warning("Failed to parse papers for %s-%s from %s: %s", name, year, url, e)
+    except Exception as e:
+        logger.exception("Unexpected error while obtaining papers for %s-%s from %s: %s", name, year, url, e)
+
+    logger.info("Found %d papers at %s-%s...", cnt, name, year)
+
 def update_db():
+    # get the start year
+    with Session() as session:
+        years = session.query(Paper.year).all()
+        start_year = sorted({x[0] for x in years})[-1]
+    assert start_year >= START_YEAR
+
+    # now look for new papers
     for conf in CONFERENCES:
-        for year in range(START_YEAR, datetime.now().year+1):
-            get_papers(conf, year, build_abstract)
+        for year in range(start_year, datetime.now().year+1):
+            get_papers(conf, year)
 
 def build_db(build_abstract):
     # step 1, download basic paper information
@@ -254,4 +305,4 @@ def build_db(build_abstract):
         update_db()
 
     # step 2, update abstract information
-    download_abstract()
+    #download_abstract()
