@@ -14,6 +14,7 @@ class Paper(Base):
     year = Column(Integer)
     title = Column(String)
     authors = Column(String)
+    url = Column(String)
     abstract = Column(String)
 
     def __repr__(self):

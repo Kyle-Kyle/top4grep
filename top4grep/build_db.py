@@ -163,10 +163,10 @@ class DblpPaperHandler(handler.ContentHandler):
                 ))
 
 
-def save_paper(conf, year, title, authors, abstract):
+def save_paper(conf, year, title, authors, url, abstract):
     logger.debug("Adding paper %r with abstract prefix %r...", title, abstract[:20])
     session = Session()
-    paper = Paper(conference=conf, year=year, title=title, authors=", ".join(authors), abstract=abstract)
+    paper = Paper(conference=conf, year=year, title=title, authors=", ".join(authors), url=url, abstract=abstract)
     session.add(paper)
     session.commit()
     session.close()
@@ -190,7 +190,7 @@ def parse_dblp_db():
             seen_buckets.add(bucket)
 
         if not paper_exist(record.conference, record.year, record.title):
-            save_paper(record.conference, record.year, record.title, record.authors, "")
+            save_paper(record.conference, record.year, record.title, record.authors, record.publisher_url, "")
         paper_count += 1
 
     start_year = START_YEAR
@@ -208,19 +208,6 @@ def parse_dblp_db():
     with gzip.open(DBLP_XML_PATH, "rb") as xml_stream:
         source.setByteStream(xml_stream)
         parser.parse(source)
-
-def _get_abstract(conference, title, authors, publisher_url):
-    if not publisher_url:
-        logger.warning("Failed to obtain publisher URL for paper %r", title)
-        return ""
-
-    try:
-        return Abstracts[conference].get_abstract_from_publisher(publisher_url, authors)
-    except requests.RequestException as e:
-        logger.warning("Failed to fetch abstract for paper %r from %s: %s", title, publisher_url, e)
-    except Exception as e:
-        logger.exception("Failed to extract abstract for paper %r from %s: %s", title, publisher_url, e)
-    return ""
 
 def has_papers():
     with Session() as session:
@@ -275,7 +262,7 @@ def get_papers(name, year):
             paper_url = elem.find_all('li')[0].div.a.attrs['href']
             # insert the entry only if the paper does not exist
             if not paper_exist(name, year, title):
-                save_paper(name, year, title, authors, "")
+                save_paper(name, year, title, authors, paper_url, "")
             cnt += 1
     except requests.RequestException as e:
         logger.warning("Failed to fetch papers for %s-%s from %s: %s", name, year, url, e)
@@ -302,8 +289,22 @@ def download_abstract():
     # step 1: get all papers with no abstract
     with Session() as session:
         papers = session.query(Paper).filter(Paper.abstract == '').all()
-    # step 2: getting abstracts
+    # step 2: getting abstracts and save it into the database
     logger.info("grabbing abstract for %d papers", len(papers))
+    papers = sorted(papers, key=lambda x: x.year)
+    for paper in papers:
+        if paper.conference != 'NDSS':
+            continue
+        if not paper.url:
+            continue
+        abstract = Abstracts[paper.conference].get_abstract(paper)
+        print(paper.year, paper.url)
+        print(abstract)
+    #session = Session()
+    #paper = Paper(conference=conf, year=year, title=title, authors=", ".join(authors), url=url, abstract=abstract)
+    #session.add(paper)
+    #session.commit()
+    #session.close()
     #def _get_abstract(conference, title, authors, publisher_url):
     #import IPython; IPython.embed()
 
