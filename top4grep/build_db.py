@@ -16,13 +16,14 @@ from xml.sax.handler import feature_external_ges
 import requests
 import sqlalchemy
 from sqlalchemy.orm import sessionmaker
+from pypdl import Pypdl
 
 from .utils import new_logger
 from .db import Base, Paper
 from .abstract import Abstracts
 
 logger = new_logger("DB")
-logger.setLevel("WARNING")
+logger.setLevel("INFO")
 
 CONFERENCES = ["NDSS", "IEEE S&P", "USENIX", "CCS"]
 NAME_MAP = {
@@ -37,15 +38,13 @@ CONF_PREFIXES = {
         }
 
 PACKAGE_DIR = Path(__file__).resolve().parent
-DB_PATH = PACKAGE_DIR / "data" / "papers.db"
-DBLP_DUMP_DIR = PACKAGE_DIR / "data" / "dblp"
-DBLP_XML_GZ_FILENAME = "dblp.xml.gz"
-DBLP_DTD_FILENAME = "dblp.dtd"
-DBLP_XML_GZ_URL = "https://dblp.org/xml/dblp.xml.gz"
-DBLP_DTD_URL = "https://dblp.org/xml/dblp.dtd"
+DB_PATH = str(PACKAGE_DIR / "data" / "papers.db")
+DBLP_XML_PATH = str(PACKAGE_DIR / "data" / "dblp.xml.gz")
+DBLP_DTD_PATH = str(PACKAGE_DIR / "data" / "dblp.dtd")
 REQUEST_HEADERS = {
         "User-Agent": "top4grep",
         }
+START_YEAR = 2000
 REQUEST_TIMEOUT = (10, 120)
 DOWNLOAD_CHUNK_SIZE = 1024 * 1024
 
@@ -68,7 +67,7 @@ class DblpDtdResolver(handler.EntityResolver):
         self.dtd_path = Path(dtd_path)
 
     def resolveEntity(self, public_id, system_id):
-        if system_id and system_id.endswith(DBLP_DTD_FILENAME):
+        if system_id and system_id.endswith("dblp.dtd"):
             return str(self.dtd_path)
         return system_id
 
@@ -171,119 +170,42 @@ def save_paper(conf, year, title, authors, abstract):
     session.close()
 
 
-def paper_exist(conf, year, title, authors, abstract):
+def paper_exist(conf, year, title):
     session = Session()
-    paper = session.query(Paper).filter(Paper.conference==conf, Paper.year==year, Paper.title==title, Paper.abstract==abstract).first()
+    paper = session.query(Paper).filter(Paper.conference==conf, Paper.year==year, Paper.title==title).first()
     session.close()
     return paper is not None
 
+def parse_dblp_db():
+    seen_buckets = set()
+    paper_count = 0
 
-def download_dblp_dump(dump_dir=DBLP_DUMP_DIR, force=False):
-    dump_dir = Path(dump_dir)
-    dump_dir.mkdir(parents=True, exist_ok=True)
+    def save_record(record):
+        nonlocal paper_count
+        bucket = (record.conference, record.year)
+        if bucket not in seen_buckets:
+            #print(record.conference, record.year)
+            seen_buckets.add(bucket)
 
-    dtd_path = dump_dir / DBLP_DTD_FILENAME
-    xml_gz_path = dump_dir / DBLP_XML_GZ_FILENAME
-    _download_file(DBLP_DTD_URL, dtd_path, force)
-    _download_file(DBLP_XML_GZ_URL, xml_gz_path, force)
-    return xml_gz_path, dtd_path
+        if not paper_exist(record.conference, record.year, record.title):
+            save_paper(record.conference, record.year, record.title, record.authors, "")
+        paper_count += 1
 
-
-def _download_file(url, destination, force):
-    if not force and _destination_is_current(url, destination):
-        logger.info("Using cached DBLP file: %s", destination)
-        return
-
-    print(f"Downloading {url} to {destination}")
-    temporary_destination = destination.with_name(destination.name + ".tmp")
-    try:
-        with requests.get(url, headers=REQUEST_HEADERS, stream=True, timeout=REQUEST_TIMEOUT) as response:
-            response.raise_for_status()
-            with temporary_destination.open("wb") as f:
-                for chunk in response.iter_content(chunk_size=DOWNLOAD_CHUNK_SIZE):
-                    if chunk:
-                        f.write(chunk)
-            _set_file_mtime(temporary_destination, response.headers.get("Last-Modified"))
-        temporary_destination.replace(destination)
-    finally:
-        if temporary_destination.exists():
-            temporary_destination.unlink()
-
-
-def _destination_is_current(url, destination):
-    if not destination.exists():
-        return False
-
-    try:
-        response = requests.head(url, headers=REQUEST_HEADERS, allow_redirects=True, timeout=REQUEST_TIMEOUT)
-        response.raise_for_status()
-    except requests.RequestException as e:
-        logger.warning("Failed to check freshness for %s, using cached %s: %s", url, destination, e)
-        return True
-
-    remote_size = response.headers.get("Content-Length")
-    if remote_size and destination.stat().st_size != int(remote_size):
-        return False
-
-    remote_mtime = _parse_http_timestamp(response.headers.get("Last-Modified"))
-    if remote_mtime is not None:
-        return destination.stat().st_mtime >= remote_mtime
-
-    return remote_size is not None
-
-
-def _set_file_mtime(path, http_timestamp):
-    mtime = _parse_http_timestamp(http_timestamp)
-    if mtime is not None:
-        os.utime(path, (mtime, mtime))
-
-
-def _parse_http_timestamp(http_timestamp):
-    if not http_timestamp:
-        return None
-    try:
-        return parsedate_to_datetime(http_timestamp).timestamp()
-    except (TypeError, ValueError, AttributeError):
-        return None
-
-
-def parse_dblp_dump(xml_gz_path, dtd_path, on_paper, conferences=None, start_year=2000, end_year=None):
-    xml_gz_path = Path(xml_gz_path)
-    dtd_path = Path(dtd_path)
-    if end_year is None:
-        end_year = datetime.now().year
-    if conferences is None:
-        conferences = CONFERENCES
-    if not xml_gz_path.exists():
-        raise FileNotFoundError(f"Missing DBLP XML dump: {xml_gz_path}")
-    if not dtd_path.exists():
-        raise FileNotFoundError(f"Missing DBLP DTD: {dtd_path}")
-
+    start_year = START_YEAR
+    end_year = datetime.now().year
     parser = make_parser()
     try:
         parser.setFeature(feature_external_ges, True)
     except (SAXNotRecognizedException, SAXNotSupportedException) as e:
         raise RuntimeError("DBLP XML parsing requires external entity support") from e
 
-    parser.setEntityResolver(DblpDtdResolver(dtd_path))
-    parser.setContentHandler(DblpPaperHandler(on_paper, conferences, start_year, end_year))
+    parser.setEntityResolver(DblpDtdResolver(DBLP_DTD_PATH))
+    parser.setContentHandler(DblpPaperHandler(save_record, CONFERENCES, start_year, end_year))
 
-    source = InputSource(str(xml_gz_path.with_suffix("")))
-    with gzip.open(xml_gz_path, "rb") as xml_stream:
+    source = InputSource(DBLP_XML_PATH)
+    with gzip.open(DBLP_XML_PATH, "rb") as xml_stream:
         source.setByteStream(xml_stream)
         parser.parse(source)
-
-
-def get_papers(name, year, build_abstract, download=True, dump_dir=DBLP_DUMP_DIR):
-    build_db(
-            build_abstract,
-            download=download,
-            dump_dir=dump_dir,
-            conferences=[name],
-            start_year=year,
-            end_year=year,
-            )
-
 
 def _get_abstract(conference, title, authors, publisher_url):
     if not publisher_url:
@@ -298,46 +220,38 @@ def _get_abstract(conference, title, authors, publisher_url):
         logger.exception("Failed to extract abstract for paper %r from %s: %s", title, publisher_url, e)
     return ""
 
+def has_papers():
+    with Session() as session:
+        return session.query(Paper.id).first() is not None
 
-def build_db(build_abstract, download=True, dump_dir=DBLP_DUMP_DIR, force_download=False,
-             conferences=None, start_year=2000, end_year=None):
-    if end_year is None:
-        end_year = datetime.now().year
-    if conferences is None:
-        conferences = CONFERENCES
+def build_fresh_db():
+    # download dblp database files first
+    logger.info("Downloading dblp database...")
+    dl = Pypdl()
+    dl.start("https://dblp.org/xml/dblp.dtd", DBLP_DTD_PATH)
+    dl = Pypdl()
+    dl.start("https://dblp.org/xml/dblp.xml.gz", DBLP_XML_PATH)
 
-    if download:
-        xml_gz_path, dtd_path = download_dblp_dump(dump_dir=dump_dir, force=force_download)
+    # parse the db
+    logger.info("Parsing dblp database...")
+    parse_dblp_db()
+
+    # delete it
+    os.unlink(DBLP_DTD_PATH)
+    os.unlink(DBLP_XML_PATH)
+
+def update_db():
+    for conf in CONFERENCES:
+        for year in range(START_YEAR, datetime.now().year+1):
+            get_papers(conf, year, build_abstract)
+
+def build_db(build_abstract):
+    # step 1, download basic paper information
+    if not has_papers():
+        logger.info("No existing db detected, building one from the dblp database, it will take around 5 minutes...")
+        build_fresh_db()
     else:
-        dump_dir = Path(dump_dir)
-        xml_gz_path = dump_dir / DBLP_XML_GZ_FILENAME
-        dtd_path = dump_dir / DBLP_DTD_FILENAME
+        update_db()
 
-    seen_buckets = set()
-    paper_count = 0
-
-    def save_record(record):
-        nonlocal paper_count
-        bucket = (record.conference, record.year)
-        if bucket not in seen_buckets:
-            print(record.conference, record.year)
-            seen_buckets.add(bucket)
-
-        if build_abstract:
-            abstract = _get_abstract(record.conference, record.title, record.authors, record.publisher_url)
-        else:
-            abstract = ""
-
-        if not paper_exist(record.conference, record.year, record.title, record.authors, abstract):
-            save_paper(record.conference, record.year, record.title, record.authors, abstract)
-        paper_count += 1
-
-    parse_dblp_dump(
-            xml_gz_path,
-            dtd_path,
-            save_record,
-            conferences=conferences,
-            start_year=start_year,
-            end_year=end_year,
-            )
-    logger.debug("Found %d papers from DBLP XML dump", paper_count)
+    # step 2, update abstract information
+    download_abstract()
