@@ -10,52 +10,49 @@ from urllib.parse import urlparse
 from .utils import new_logger
 
 logger = new_logger("PaperAbstract")
-logger.setLevel("WARNING")
+logger.setLevel("DEBUG")
 
-class BasePaperAbstract(ABC):
-    def get_abstract(self, paper_html, title, authors):
-        # import ipdb; ipdb.set_trace()
-        try:
-            publisher_url = self.get_publisher_url(paper_html)
-        except Exception as e:
-            logger.warning("Failed to obtain publisher URL for paper %r: %s", title, e)
+class AbstractNDSS:
+    def get_abstract(self, paper):
+        #url = "https://doi.org/10.14722/ndss.2015.23032"
+        # before 2012, NDSS paper pages don't provide abstract
+        if paper.year < 2012:
             return ""
-        else:
-            try:
-                return self.get_abstract_from_publisher(publisher_url, authors)
-            except requests.RequestException as e:
-                logger.warning("Failed to fetch abstract for paper %r from %s: %s", title, publisher_url, e)
-            except Exception as e:
-                logger.exception("Failed to extract abstract for paper %r from %s: %s", title, publisher_url, e)
+        # in 2016 and 2018, NDSS only provide PDF url
+        if paper.year in [2016, 2018]:
             return ""
 
-    def get_publisher_url(self, paper_html):
-        ee = paper_html.find('li', {'class': 'ee'})
-        publisher_url = ee.find('a').get('href')
-        return publisher_url
-
-    @abstractmethod
-    def get_abstract_from_publisher(self, url, authors):
-        pass
-
-class AbstractNDSS(BasePaperAbstract):
-    def get_abstract_from_publisher(self, url, authors):
+        url = paper.url
+        if not url:
+            return ""
         logger.debug("URL: %s", url)
         r = requests.get(url)
         assert r.status_code == 200
-
         html = BeautifulSoup(r.text, 'html.parser')
-        paper_data = html.find('div', {'class': 'paper-data'})
-        if paper_data is not None:
-            abstract_paragraphs = filter(lambda x: x.text != '' and not authors[0] in x.text, paper_data.find_all('p'))
-            ap_list = [x.text for x in abstract_paragraphs]
-            return '\n'.join(ap_list)
+
+        if 2012 <= paper.year < 2019:
+            data = html.find('main', {'class': 'main'})
+            is_abstract = False
+            for x in data.section.children:
+                if x == '\n':
+                    continue
+                if x.text.lower() == "abstract:":
+                    is_abstract = True
+                    continue
+                if is_abstract == True:
+                    return x.text
         else:
-            abstract_paragraphs = html.find(string=re.compile("Abstract:")).find_next(recursive=False)
-            return abstract_paragraphs.get_text(separator='\n')
+            paper_data = html.find('div', {'class': 'paper-data'})
+            for x in paper_data.children:
+                if x == '\n':
+                    continue
+                if x.find('strong'):
+                    continue
+                return x.text
 
+        raise
 
-class AbstractSP(BasePaperAbstract):
+class AbstractSP:
     GRAPHQL_URL = "https://www.computer.org/csdl/api/v1/graphql"
     ARTICLE_FIELDS = """
         id
@@ -150,7 +147,7 @@ class AbstractSP(BasePaperAbstract):
         return self._extract_abstract(article)
 
 
-class AbstractUSENIX(BasePaperAbstract):
+class AbstractUSENIX:
     def get_abstract_from_publisher(self, url, authors):
         r = requests.get(url)
         logger.debug("URL: %s", url)
@@ -162,7 +159,7 @@ class AbstractUSENIX(BasePaperAbstract):
         return abstract_paragraphs.get_text(separator='\n')
 
 
-class AbstractCCS(BasePaperAbstract):
+class AbstractCCS:
     def get_abstract_from_publisher(self, url, authors):
         # TODO: ACM library doesn't like me to crawl and will ban me when upset.
         logger.debug("URL: %s", url)
