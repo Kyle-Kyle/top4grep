@@ -85,10 +85,7 @@ def main():
         if not has_papers():
             parser.error("need to build a paper database first to perform wanted queries")
         keywords = [x.strip() for x in args.k.split(',')]
-        if keywords:
-            logger.info("Grep based on the following keywords: %s", ', '.join(keywords))
-        else:
-            logger.warning("No keyword is provided. Return all the papers.")
+        logger.info("Grep based on the following keywords: %s", ', '.join(keywords))
 
         papers = grep(keywords, args.abstract)
         logger.debug("Found %d papers", len(papers))
