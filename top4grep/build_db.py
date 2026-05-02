@@ -293,7 +293,7 @@ def download_abstract():
     logger.info("grabbing abstract for %d papers", len(papers))
     papers = sorted(papers, key=lambda x: x.year)
     for paper in papers:
-        if paper.conference != 'NDSS':
+        if paper.conference != 'USENIX':
             continue
         if not paper.url:
             continue
@@ -317,4 +317,4 @@ def build_db(build_abstract):
         update_db()
 
     # step 2, update abstract information
-    download_abstract()
+    #download_abstract()

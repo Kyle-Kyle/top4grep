@@ -14,7 +14,6 @@ logger.setLevel("DEBUG")
 
 class AbstractNDSS:
     def get_abstract(self, paper):
-        #url = "https://doi.org/10.14722/ndss.2015.23032"
         # before 2012, NDSS paper pages don't provide abstract
         if paper.year < 2012:
             return ""
@@ -148,15 +147,41 @@ class AbstractSP:
 
 
 class AbstractUSENIX:
-    def get_abstract_from_publisher(self, url, authors):
+    def get_abstract(self, paper):
+        if paper.year != 2012:
+            return ''
+        url = paper.url
+
+        if any(url.endswith(x) for x in [".zip", ".pdf", ".htm"]):
+            return ""
+
+        # security only
+        if '/sec' not in url and '/usenixsecurity' not in url:
+            return ""
+
         r = requests.get(url)
         logger.debug("URL: %s", url)
         assert r.status_code == 200
 
         html = BeautifulSoup(r.text, 'html.parser')
 
-        abstract_paragraphs = html.find(string=re.compile("Abstract:")).find_next(recursive=False)
-        return abstract_paragraphs.get_text(separator='\n')
+        # legacy display format
+        if '/publications/library/' in url:
+            data = html.find('h3').next_sibling
+            return ' '.join([x.strip() for x in data.text.splitlines() if x])
+
+        if paper.year < 2020:
+            data = html.find('div', {'class': 'content'})
+            data = data.find('p')
+            print(data)
+            if data is None:
+                return ""
+            abstract = ' '.join([x.strip() for x in data.text.splitlines() if x])
+            if "USENIX is committed to Open Access" in abstract:
+                return ""
+            return abstract
+
+        raise
 
 
 class AbstractCCS:
