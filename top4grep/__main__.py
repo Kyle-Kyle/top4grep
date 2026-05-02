@@ -68,6 +68,11 @@ def show_papers(papers):
         print(paper)
 
 
+def has_papers():
+    with Session() as session:
+        return session.query(Paper.id).first() is not None
+
+
 def main():
     parser = argparse.ArgumentParser(description='Scripts to query the paper database',
                                      usage="%(prog)s [options] -k <keywords>")
@@ -77,7 +82,8 @@ def main():
     args = parser.parse_args()
 
     if args.k:
-        assert DB_PATH.exists(), f"need to build a paper database first to perform wanted queries"
+        if not has_papers():
+            parser.error("need to build a paper database first to perform wanted queries")
         keywords = [x.strip() for x in args.k.split(',')]
         if keywords:
             logger.info("Grep based on the following keywords: %s", ', '.join(keywords))

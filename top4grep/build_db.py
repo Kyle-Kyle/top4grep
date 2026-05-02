@@ -44,7 +44,7 @@ DBLP_DTD_FILENAME = "dblp.dtd"
 DBLP_XML_GZ_URL = "https://dblp.org/xml/dblp.xml.gz"
 DBLP_DTD_URL = "https://dblp.org/xml/dblp.dtd"
 REQUEST_HEADERS = {
-        "User-Agent": "top4grep (+https://github.com/Kyle-Kyle/top4grep)",
+        "User-Agent": "top4grep",
         }
 REQUEST_TIMEOUT = (10, 120)
 DOWNLOAD_CHUNK_SIZE = 1024 * 1024
