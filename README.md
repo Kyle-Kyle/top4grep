@@ -15,7 +15,9 @@ If you want to update the papers stored in `papers.db`, you can recreate it with
 top4grep --build-db
 ```
 
-Which will build the db wherever you run it.
+Which rebuilds `top4grep/data/papers.db`.
+The first run downloads DBLP's latest XML dump and DTD into `top4grep/data/dblp`;
+later runs reuse the cached files when they are still current.
 
 ### Query
 ```bash

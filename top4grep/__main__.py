@@ -73,7 +73,7 @@ def main():
                                      usage="%(prog)s [options] -k <keywords>")
     parser.add_argument('-k', type=str, help="keywords to grep, separated by ','. For example, 'linux,kernel,exploit'", default='')
     parser.add_argument('--build-db', action="store_true", help="Builds the database of conference papers")
-    parser.add_argument('--abstract', action="store_true", help="Involve abstract into the database's building or query (Need Chrome for building)")
+    parser.add_argument('--abstract', action="store_true", help="Involve abstracts when building or querying the database")
     args = parser.parse_args()
 
     if args.k:

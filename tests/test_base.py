@@ -1,3 +1,6 @@
+import gzip
+import tempfile
+from pathlib import Path
 from unittest.mock import patch
 
 import sqlalchemy
@@ -5,8 +8,40 @@ from sqlalchemy.orm import sessionmaker
 
 import top4grep.__main__ as cli
 import top4grep.build_db as build_db
-from top4grep.abstract import AbstractUSENIX
 from top4grep.db import Base, Paper
+
+
+def write_dblp_fixture(dump_dir):
+    dtd = '<!ENTITY testentity "Entity">\n'
+    xml = """<?xml version="1.0" encoding="ISO-8859-1"?>
+<!DOCTYPE dblp SYSTEM "dblp.dtd">
+<dblp>
+  <inproceedings key="conf/uss/example20">
+    <author>Alice Example</author>
+    <author>Bob Example</author>
+    <title>USENIX &testentity; Paper.</title>
+    <year>2020</year>
+    <ee>https://www.usenix.org/conference/usenixsecurity20/presentation/example</ee>
+  </inproceedings>
+  <inproceedings key="conf/uss/example19">
+    <author>Carol Example</author>
+    <title>Older USENIX Paper.</title>
+    <year>2019</year>
+    <ee>https://www.usenix.org/conference/usenixsecurity19/presentation/example</ee>
+  </inproceedings>
+  <inproceedings key="conf/sp/example20">
+    <author>Dan Example</author>
+    <title>IEEE S&amp;P Paper.</title>
+    <year>2020</year>
+    <ee>https://doi.org/10.1109/SP46215.2023.10179381</ee>
+  </inproceedings>
+</dblp>
+"""
+    dump_dir = Path(dump_dir)
+    dump_dir.mkdir(parents=True, exist_ok=True)
+    (dump_dir / build_db.DBLP_DTD_FILENAME).write_text(dtd, encoding="ascii")
+    with gzip.open(dump_dir / build_db.DBLP_XML_GZ_FILENAME, "wb") as f:
+        f.write(xml.encode("ascii"))
 
 
 def test_download_paper():
@@ -15,9 +50,12 @@ def test_download_paper():
     def save_paper(conf, year, title, authors, abstract):
         papers.append((conf, year, title, authors, abstract))
 
-    with patch("top4grep.build_db.paper_exist", return_value=False):
-        with patch("top4grep.build_db.save_paper", side_effect=save_paper):
-            build_db.get_papers("USENIX", 2020, build_abstract=False)
+    with tempfile.TemporaryDirectory() as dump_dir:
+        write_dblp_fixture(dump_dir)
+
+        with patch("top4grep.build_db.paper_exist", return_value=False):
+            with patch("top4grep.build_db.save_paper", side_effect=save_paper):
+                build_db.get_papers("USENIX", 2020, build_abstract=False, download=False, dump_dir=dump_dir)
 
     assert papers
     papers2 = []
@@ -32,6 +70,7 @@ def test_download_paper():
     assert all(p['conf'] == 'USENIX' for p in papers2)
     assert all(p['year'] == 2020 for p in papers2)
     assert all(not p['abstract'] for p in papers2)
+    assert [p['title'] for p in papers2] == ["USENIX Entity Paper."]
 
 def test_search_in_db():
     def word_tokenize(text):
