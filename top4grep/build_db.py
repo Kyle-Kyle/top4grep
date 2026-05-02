@@ -271,6 +271,8 @@ def get_papers(name, year):
         for paper_html in paper_htmls:
             title = paper_html.find('span', {'class': 'title'}).text
             authors = [x.text for x in paper_html.find_all('span', {'itemprop': 'author'})]
+            elem = paper_html.find('nav', {'class': 'publ'})
+            paper_url = elem.find_all('li')[0].div.a.attrs['href']
             # insert the entry only if the paper does not exist
             if not paper_exist(name, year, title):
                 save_paper(name, year, title, authors, "")
@@ -296,6 +298,15 @@ def update_db():
         for year in range(start_year, datetime.now().year+1):
             get_papers(conf, year)
 
+def download_abstract():
+    # step 1: get all papers with no abstract
+    with Session() as session:
+        papers = session.query(Paper).filter(Paper.abstract == '').all()
+    # step 2: getting abstracts
+    logger.info("grabbing abstract for %d papers", len(papers))
+    #def _get_abstract(conference, title, authors, publisher_url):
+    #import IPython; IPython.embed()
+
 def build_db(build_abstract):
     # step 1, download basic paper information
     if not has_papers():
@@ -305,4 +316,4 @@ def build_db(build_abstract):
         update_db()
 
     # step 2, update abstract information
-    #download_abstract()
+    download_abstract()
